@@ -36,3 +36,6 @@ def tutorial():
         pass
     elif play_tutorial = N:
         pass
+    else:
+        return tutorial()
+tutorial()
