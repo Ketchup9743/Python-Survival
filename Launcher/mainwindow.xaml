@@ -1,0 +1,51 @@
+<Window x:Class="GameLoader.MainWindow"
+        xmlns="http://microsoft.com"
+        xmlns:x="http://microsoft.com"
+        Title="Mod Loader &amp; Terminal Launcher" Height="450" Width="700" 
+        Background="#242627" WindowStartupLocation="CenterScreen">
+    
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,15">
+            <TextBlock Text="DEEPSLATE ENGINE CLI" Foreground="#8A9A86" FontSize="14" FontWeight="Bold" FontFamily="Consolas"/>
+            <Separator Background="#3A3D40" Margin="0,5,0,0"/>
+        </StackPanel>
+
+        <Border Grid.Row="1" Background="#18191A" CornerRadius="6" BorderBrush="#3A3D40" BorderThickness="1" Padding="15">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <TextBlock x:Name="TerminalOutput" 
+                           Text="Initializing Deepslate C# Mod Loader...&#x0a;Python Environment: Ready.&#x0a;&#x0a;Type 'Start' in the prompt below to launch the game logic engine." 
+                           Foreground="#A9B1D6" 
+                           FontSize="14" 
+                           FontFamily="Consolas" 
+                           TextWrapping="Wrap"/>
+            </ScrollViewer>
+        </Border>
+
+        <Grid Grid.Row="2" Margin="0,15,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0" Text="> " Foreground="#7AA2F7" FontSize="16" FontWeight="Bold" FontFamily="Consolas" VerticalAlignment="Center" Margin="5,0,5,0"/>
+            
+            <TextBox x:Name="TerminalInput" 
+                     Grid.Column="1"
+                     Background="Transparent" 
+                     BorderThickness="0" 
+                     Foreground="#FFFFFF" 
+                     CaretBrush="#FFFFFF"
+                     FontSize="16" 
+                     FontFamily="Consolas" 
+                     VerticalAlignment="Center"
+                     KeyDown="TerminalInput_KeyDown"
+                     Loaded="TerminalInput_Loaded"/>
+        </Grid>
+    </Grid>
+</Window>

@@ -1,0 +1,7 @@
+<Application x:Class="GameLoader.App"
+             xmlns="http://microsoft.com"
+             xmlns:x="http://microsoft.com"
+             StartupUri="mainwindow.xaml">
+    <Application.Resources>
+    </Application.Resources>
+</Application>
