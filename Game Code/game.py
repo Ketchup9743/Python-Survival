@@ -29,3 +29,10 @@ def register():
         print("Invalid role selected. Please try again.")
         return register()
 register()
+
+def tutorial():
+    play_tutorial = ("Would you like to play the tutorial? Y / N")
+    if play_tutorial =  Y:
+        pass
+    elif play_tutorial = N:
+        pass
