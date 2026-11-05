@@ -40,6 +40,13 @@ role_data = {
         "skills": ["Attack", "Defend", "Cover"],
         "weapon": "Rifle",
     },
+    "Divine Caster": {
+        "health": 80,
+        "power": 150,
+        "defense": 60,
+        "skills": ["Divine Beam", "Healing Light", "Hardening Aura"],
+        "weapon": "Divine Staff",
+    },
 }
 
 def role_selection():
