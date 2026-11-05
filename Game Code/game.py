@@ -9,35 +9,35 @@ role_data = {
         "health": 100,
         "power": 50,
         "defense": 30,
-        "skills": ["Repair", "Build", "Upgrade"],
+        "skills": ["Attack", "Protect", "Upgrade"],
         "weapon": "Pocket Knife",
     },
     "Medic": {
         "health": 125,
         "power": 60,
         "defense": 20,
-        "skills": ["Heal", "Revive", "Support"],
+        "skills": ["Heal", "Attack", "Buff"],
         "weapon": "Scalpel",
     },
     "Support": {
         "health": 110,
         "power": 20,
         "defense": 80,
-        "skills": ["Support", "Buff", "Debuff"],
+        "skills": ["Attack", "Buff", "Debuff"],
         "weapon": "Sword",
     },
     "Miner": {
         "health": 100,
         "power": 80,
         "defense": 40,
-        "skills": ["Mine", "Excavate", "Collect"],
+        "skills": ["Attack", "PickPocket", "Cover"],
         "weapon": "Pickaxe",
     },
     "Soldier": {
         "health": 150,
         "power": 70,
         "defense": 70,
-        "skills": ["Attack", "Defend", "Cover"],
+        "skills": ["Attack", "Grenade", "Cover"],
         "weapon": "Rifle",
     },
     "Divine Caster": {
@@ -48,7 +48,8 @@ role_data = {
         "weapon": "Divine Staff",
     },
 }
-
+def skills():
+    skill_use = input("Select one of your skills")
 def role_selection():
     for role in role_data:
         print(role)
