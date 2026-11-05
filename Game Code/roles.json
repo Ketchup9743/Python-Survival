@@ -1,0 +1,40 @@
+{
+    "engineer" : "Engineer",
+    "health" : 100,
+    "power" : 50,
+    "defense" : 30,
+    "skills" : ["Repair", "Build", "Upgrade"],
+    "weapon" : "Pocket Knife"
+}
+{
+    "medic" : "Medic",
+    "health" : 125,
+    "power" : 60,
+    "defense" : 20,
+    "skills" : ["Heal", "Revive", "Support"],
+    "weapon" : "Scalpel"
+}
+{
+    "support" : "Support",
+    "health" : 110,
+    "power" : 20,
+    "defense" : 80,
+    "skills" : ["Support", "Buff", "Debuff"],
+    "weapon" : "Sword"
+}    
+{
+    "Miner" : "Miner",
+    "health" : 100,
+    "power" : 80,
+    "defense" : 40,
+    "skills" : ["Mine", "Excavate", "Collect"],
+    "weapon" : "Pickaxe"
+}
+{
+    "Soldier" : "Soldier",
+    "health" : 150,
+    "power" : 70,
+    "defense" : 70,
+    "skills" : ["Attack", "Defend", "Cover"],
+    "weapon" : "Rifle"
+}
