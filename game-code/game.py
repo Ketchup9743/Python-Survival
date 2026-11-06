@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import os
 import random
@@ -911,6 +913,7 @@ def show_quests(player):
 
 def show_help():
     print("\nCommands:")
+    print("Launch normally for the desktop pixel UI, or run with --terminal for this mode.")
     print("/help - Show this command list")
     print("/tutorial - Play through the tutorial")
     print("/skills - Show your role, stats, and available skills")
@@ -1427,7 +1430,555 @@ def tutorial(player):
     print("Use /help at any time to see every command.")
 
 
+def launch_gui():
+    try:
+        import tkinter as tk
+        from tkinter import messagebox, simpledialog
+    except ImportError as error:
+        print(f"Tkinter is unavailable: {error}. Run with --terminal instead.")
+        return
+
+    class SurvivalGameUI:
+        colors = {
+            "ink": "#25223a",
+            "paper": "#fff5dc",
+            "panel": "#f9e9c5",
+            "pink": "#ee8b9b",
+            "blue": "#86c8d6",
+            "green": "#91bd78",
+            "dark_green": "#567b59",
+            "gold": "#f1c96a",
+            "white": "#fffdf5",
+        }
+
+        def __init__(self, root):
+            self.root = root
+            self.root.title("Python Survival - Pixel RPG")
+            self.root.geometry("1120x760")
+            self.root.minsize(940, 660)
+            self.root.configure(bg=self.colors["ink"])
+            self.player = None
+            self.enemy = None
+            self.fight = None
+            self.turn = 0
+            self._build_layout()
+            self.show_start()
+
+        def _build_layout(self):
+            self.header = tk.Frame(self.root, bg=self.colors["ink"], padx=16, pady=10)
+            self.header.pack(fill="x")
+            tk.Label(
+                self.header,
+                text="PYTHON SURVIVAL",
+                font=("Courier", 22, "bold"),
+                fg=self.colors["gold"],
+                bg=self.colors["ink"],
+            ).pack(side="left")
+            self.status_label = tk.Label(
+                self.header,
+                text="A pixel adventure",
+                font=("Courier", 11, "bold"),
+                fg=self.colors["white"],
+                bg=self.colors["ink"],
+            )
+            self.status_label.pack(side="right")
+
+            body = tk.Frame(self.root, bg=self.colors["ink"], padx=14)
+            body.pack(fill="both", expand=True)
+            self.scene = tk.Canvas(
+                body,
+                width=720,
+                height=410,
+                bg="#d6e8df",
+                highlightthickness=5,
+                highlightbackground=self.colors["paper"],
+            )
+            self.scene.pack(side="left", fill="both", expand=True, padx=(0, 12))
+            self.actions = tk.Frame(
+                body,
+                bg=self.colors["panel"],
+                padx=12,
+                pady=12,
+                highlightthickness=4,
+                highlightbackground=self.colors["gold"],
+            )
+            self.actions.pack(side="right", fill="y")
+            tk.Label(
+                self.actions,
+                text="ACTION MENU",
+                font=("Courier", 14, "bold"),
+                bg=self.colors["panel"],
+                fg=self.colors["ink"],
+            ).pack(fill="x", pady=(0, 8))
+            self.action_buttons = tk.Frame(self.actions, bg=self.colors["panel"])
+            self.action_buttons.pack(fill="both", expand=True)
+
+            self.log = tk.Text(
+                self.root,
+                height=8,
+                wrap="word",
+                state="disabled",
+                font=("Courier", 10),
+                bg=self.colors["paper"],
+                fg=self.colors["ink"],
+                padx=10,
+                pady=8,
+                relief="flat",
+            )
+            self.log.pack(fill="x", padx=14, pady=12)
+
+        def _set_actions(self, options):
+            for child in self.action_buttons.winfo_children():
+                child.destroy()
+            for index, (label, callback) in enumerate(options):
+                button = tk.Button(
+                    self.action_buttons,
+                    text=label,
+                    command=callback,
+                    font=("Courier", 10, "bold"),
+                    bg=self.colors["white"],
+                    fg=self.colors["ink"],
+                    activebackground=self.colors["pink"],
+                    activeforeground=self.colors["ink"],
+                    relief="raised",
+                    bd=3,
+                    padx=8,
+                    pady=6,
+                    anchor="w",
+                    wraplength=220,
+                )
+                button.grid(row=index, column=0, sticky="ew", pady=3)
+            self.action_buttons.grid_columnconfigure(0, weight=1)
+
+        def _log(self, message):
+            self.log.configure(state="normal")
+            self.log.insert("end", message.rstrip() + "\n")
+            self.log.see("end")
+            self.log.configure(state="disabled")
+
+        def _capture(self, callback, *args):
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                callback(*args)
+            text = output.getvalue().strip()
+            if text:
+                self._log(text)
+
+        def _update_status(self):
+            if self.player is None:
+                self.status_label.configure(text="A pixel adventure")
+                return
+            self.status_label.configure(
+                text=(
+                    f"{self.player['name']}  |  LV {self.player['level']}  |  "
+                    f"GEMS {self.player['gems']}  |  "
+                    f"HP {self.player['health']}/{effective_max_health(self.player)}"
+                )
+            )
+
+        def _draw_scenery(self, battle=False):
+            canvas = self.scene
+            canvas.delete("all")
+            width = max(canvas.winfo_width(), 720)
+            height = max(canvas.winfo_height(), 410)
+            canvas.create_rectangle(0, 0, width, height, fill="#a9d8e6", outline="")
+            canvas.create_oval(width - 150, 32, width - 72, 110, fill="#f3ce75", outline="")
+            canvas.create_rectangle(0, height - 122, width, height, fill="#94c27d", outline="")
+            canvas.create_rectangle(0, height - 92, width, height, fill="#6d9c67", outline="")
+            for x, y in ((70, 225), (150, 270), (width - 210, 220), (width - 110, 270)):
+                canvas.create_rectangle(x, y, x + 70, height - 92, fill="#578663", outline="")
+                canvas.create_rectangle(x - 18, y - 28, x + 88, y + 42, fill="#739f71", outline="")
+                canvas.create_rectangle(x + 13, y - 55, x + 58, y + 8, fill="#8bb27c", outline="")
+
+            if not battle:
+                canvas.create_rectangle(270, height - 205, 405, height - 92, fill="#f4d18c", outline=self.colors["ink"], width=3)
+                canvas.create_polygon(258, height - 205, 338, height - 267, 418, height - 205, fill="#d77d79", outline=self.colors["ink"], width=3)
+                canvas.create_rectangle(322, height - 151, 354, height - 92, fill="#8b6254", outline=self.colors["ink"], width=2)
+                self._draw_hero(105, height - 104)
+                canvas.create_text(width // 2, 45, text="SUNMEADOW VILLAGE", font=("Courier", 19, "bold"), fill=self.colors["ink"])
+                canvas.create_text(width // 2, 75, text="A quiet place to prepare for adventure", font=("Courier", 11), fill=self.colors["ink"])
+                return
+
+            self._draw_hero(150, height - 112)
+            self._draw_enemy(width - 205, height - 112)
+            canvas.create_text(width // 2, 36, text=self.enemy["name"].upper(), font=("Courier", 18, "bold"), fill=self.colors["ink"])
+            if self.enemy.get("is_boss"):
+                canvas.create_text(width // 2, 62, text=f"PHASE {self.enemy.get('phase', 1)}", font=("Courier", 11, "bold"), fill=self.colors["ink"])
+            self._draw_battle_bars(width, height)
+
+        def _draw_hero(self, x, ground):
+            canvas = self.scene
+            canvas.create_rectangle(x, ground - 58, x + 34, ground - 24, fill="#f1c96a", outline=self.colors["ink"], width=2)
+            canvas.create_rectangle(x + 4, ground - 79, x + 30, ground - 53, fill="#f0bd96", outline=self.colors["ink"], width=2)
+            canvas.create_rectangle(x + 2, ground - 85, x + 32, ground - 77, fill="#57465d", outline=self.colors["ink"], width=2)
+            canvas.create_rectangle(x + 5, ground - 24, x + 14, ground - 3, fill="#4d5267", outline=self.colors["ink"])
+            canvas.create_rectangle(x + 21, ground - 24, x + 30, ground - 3, fill="#4d5267", outline=self.colors["ink"])
+            canvas.create_rectangle(x + 22, ground - 69, x + 25, ground - 66, fill=self.colors["ink"], outline="")
+
+        def _draw_enemy(self, x, ground):
+            canvas = self.scene
+            enemy_name = self.enemy["name"]
+            if enemy_name.startswith("Level "):
+                enemy_name = enemy_name.split(" ", 2)[-1]
+            palette = {
+                "Cave Brute": "#a57868",
+                "Venom Stalker": "#8f9b68",
+                "Stone Sentinel": "#898d9d",
+                "Storm Wisp": "#9b8cb9",
+                "Iron Colossus": "#888a8c",
+                "Elder Dragon": "#bd7869",
+                "Void Champion": "#665e80",
+            }
+            color = palette.get(enemy_name, "#bc847d")
+            canvas.create_rectangle(x, ground - 76, x + 86, ground - 12, fill=color, outline=self.colors["ink"], width=3)
+            canvas.create_rectangle(x + 8, ground - 92, x + 78, ground - 62, fill=color, outline=self.colors["ink"], width=3)
+            canvas.create_rectangle(x + 17, ground - 82, x + 24, ground - 75, fill=self.colors["white"], outline=self.colors["ink"])
+            canvas.create_rectangle(x + 61, ground - 82, x + 68, ground - 75, fill=self.colors["white"], outline=self.colors["ink"])
+            canvas.create_rectangle(x + 25, ground - 56, x + 66, ground - 51, fill=self.colors["ink"], outline="")
+            canvas.create_rectangle(x + 10, ground - 12, x + 27, ground - 2, fill=self.colors["ink"], outline="")
+            canvas.create_rectangle(x + 59, ground - 12, x + 76, ground - 2, fill=self.colors["ink"], outline="")
+
+        def _draw_battle_bars(self, width, height):
+            canvas = self.scene
+            y = height - 46
+            player_max = effective_max_health(self.player)
+            enemy_max = max(1, self.enemy.get("max_health", self.enemy["health"]))
+            canvas.create_rectangle(26, y - 18, 322, y + 21, fill=self.colors["paper"], outline=self.colors["ink"], width=2)
+            canvas.create_text(37, y - 7, text="YOU", anchor="w", font=("Courier", 10, "bold"), fill=self.colors["ink"])
+            self._draw_bar(85, y - 8, 205, self.player["health"], player_max)
+            canvas.create_text(37, y + 10, text=f"{self.player['health']}/{player_max}", anchor="w", font=("Courier", 9), fill=self.colors["ink"])
+            canvas.create_rectangle(width - 322, y - 18, width - 26, y + 21, fill=self.colors["paper"], outline=self.colors["ink"], width=2)
+            canvas.create_text(width - 310, y - 7, text="FOE", anchor="w", font=("Courier", 10, "bold"), fill=self.colors["ink"])
+            self._draw_bar(width - 250, y - 8, 205, self.enemy["health"], enemy_max)
+            canvas.create_text(width - 310, y + 10, text=f"{self.enemy['health']}/{enemy_max}", anchor="w", font=("Courier", 9), fill=self.colors["ink"])
+
+        def _draw_bar(self, x, y, width, current, maximum):
+            canvas = self.scene
+            canvas.create_rectangle(x, y, x + width, y + 10, fill="#e1d6be", outline=self.colors["ink"])
+            fill_width = max(0, min(width, width * max(0, current) / max(1, maximum)))
+            canvas.create_rectangle(x, y, x + fill_width, y + 10, fill="#77a86d", outline="")
+
+        def show_start(self):
+            self.player = None
+            self.enemy = None
+            self._draw_scenery()
+            self._update_status()
+            self._set_actions([
+                ("NEW ADVENTURE", self.new_character_form),
+                ("LOAD SAVED GAME", self.load_character),
+                ("QUIT", self.root.destroy),
+            ])
+            self._log("Welcome, adventurer. Start a new journey or continue a saved one.")
+
+        def new_character_form(self):
+            for child in self.action_buttons.winfo_children():
+                child.destroy()
+            tk.Label(self.action_buttons, text="Your name", bg=self.colors["panel"], fg=self.colors["ink"], font=("Courier", 10, "bold")).grid(row=0, column=0, sticky="w")
+            name_entry = tk.Entry(self.action_buttons, font=("Courier", 11), width=22)
+            name_entry.grid(row=1, column=0, sticky="ew", pady=(3, 10))
+            tk.Label(self.action_buttons, text="Choose a class", bg=self.colors["panel"], fg=self.colors["ink"], font=("Courier", 10, "bold")).grid(row=2, column=0, sticky="w")
+            role_var = tk.StringVar(value=next(iter(role_data)))
+            tk.OptionMenu(self.action_buttons, role_var, *role_data).grid(row=3, column=0, sticky="ew", pady=(3, 10))
+            tk.Button(
+                self.action_buttons, text="BEGIN JOURNEY",
+                command=lambda: self.create_character(name_entry.get(), role_var.get()),
+                font=("Courier", 10, "bold"), bg=self.colors["gold"],
+            ).grid(row=4, column=0, sticky="ew", pady=4)
+            tk.Button(
+                self.action_buttons, text="BACK",
+                command=self.show_start, font=("Courier", 10, "bold"),
+            ).grid(row=5, column=0, sticky="ew", pady=4)
+
+        def create_character(self, username, selected_role):
+            role = role_data[selected_role]
+            self.player = {
+                "username": username.strip(),
+                "name": username.strip() or selected_role,
+                "role": selected_role,
+                "health": role["health"],
+                "max_health": role["health"],
+                "power": role["power"],
+                "defense": role["defense"],
+                "skills": role["skills"].copy(),
+                "weapon": role["weapon"],
+                "base_health": role["health"],
+                "base_power": role["power"],
+                "base_defense": role["defense"],
+                "gems": 0, "prestige": 0, "level": 1, "xp": 0,
+                "skill_points": 0, "rank_points": 0,
+                "upgrades": {"health": 0, "power": 0, "defense": 0},
+                "pets": [], "active_pet": None,
+                "combat_stats": {"wins": 0, "hunts": 0, "boss_wins": 0, "skill_uses": 0},
+                "claimed_quests": [], "achievements": [], "location": "home",
+            }
+            self._log(f"Welcome, {self.player['name']} the {selected_role}!")
+            self.show_home()
+
+        def show_home(self):
+            if self.player is None:
+                self.show_start()
+                return
+            self.enemy = None
+            self.fight = None
+            self._update_status()
+            self._draw_scenery()
+            self._set_actions([
+                ("RANKED ARENA", self.start_ranked),
+                ("MONSTER HUNT", self.start_hunt),
+                ("BOSS BATTLE", self.start_boss),
+                ("SHOP", self.show_shop),
+                ("TRAIN SKILLS", self.show_training),
+                ("PETS", self.show_pets),
+                ("QUESTS & ACHIEVEMENTS", self.show_quests),
+                ("REST / HEAL", self.rest),
+                ("SAVE GAME", self.save_character),
+                ("LOAD GAME", self.load_character),
+            ])
+
+        def rest(self):
+            self.player["health"] = effective_max_health(self.player)
+            self._log(f"{self.player['name']} rests. Health fully restored.")
+            self._update_status()
+            self.show_home()
+
+        def start_ranked(self):
+            self.player["health"] = max(1, self.player["health"])
+            self.fight = {
+                "location": "ranked arena",
+                "reward": (
+                    80 + min(self.player["rank_points"] // 3, len(ranks) - 1) * 30,
+                    160 + min(self.player["rank_points"] // 3, len(ranks) - 1) * 40,
+                ),
+                "xp": 80,
+                "ranked": True,
+            }
+            self.start_fight(make_ranked_opponent(self.player))
+
+        def start_hunt(self):
+            self.fight = {"location": "monster hunt", "reward": (90, 180), "xp": 60, "ranked": False}
+            self.start_fight(make_hunt_enemy(self.player))
+
+        def start_boss(self):
+            self.fight = {"location": "boss arena", "reward": (500, 800), "xp": 200, "ranked": False}
+            self.start_fight(random.choice(bosses))
+
+        def start_fight(self, enemy):
+            self.enemy = enemy.copy()
+            self.enemy["max_health"] = enemy["health"]
+            self.enemy["statuses"] = {}
+            self.enemy["guard"] = 0
+            self.enemy.setdefault("damage_resistance", 0)
+            self.enemy.setdefault("status_resistance", 0)
+            self.enemy.setdefault("special", None)
+            self.enemy["is_boss"] = self.fight["location"] == "boss arena"
+            self.enemy["phase"] = 1
+            self.player["guard"] = 0
+            self.player["combat_power_bonus"] = 0
+            self.player["loot_bonus"] = 0
+            self.player["statuses"] = {}
+            ensure_progression_data(self.player)
+            self.turn = 0
+            self._draw_scenery(battle=True)
+            self._log(
+                f"{self.enemy['name']} appears! "
+                f"Health {self.enemy['health']} / Power {self.enemy['power']}."
+            )
+            self.show_battle_actions()
+
+        def show_battle_actions(self):
+            options = [
+                (skill, lambda skill=skill: self.player_action(skill))
+                for skill in self.player["skills"]
+            ]
+            options.append(("RUN AWAY", self.flee))
+            self._set_actions(options)
+            self._update_status()
+
+        def player_action(self, skill):
+            if self.enemy is None:
+                return
+            stunned = "stun" in self.player.get("statuses", {})
+            self._capture(tick_statuses, self.player)
+            self._capture(tick_statuses, self.enemy)
+            self._capture(update_boss_phase, self.enemy)
+            if self.player["health"] <= 0 or self.enemy["health"] <= 0:
+                self.finish_fight()
+                return
+            if stunned:
+                self._log("You are stunned and lose your turn!")
+            else:
+                self._capture(skill_functions[skill], self.player, self.enemy)
+                self.player["combat_stats"]["skill_uses"] += 1
+                self._capture(update_progression_rewards, self.player)
+                self._capture(update_boss_phase, self.enemy)
+                if self.enemy["health"] <= 0:
+                    self.finish_fight()
+                    return
+
+            self.turn += 1
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                enemy_attack(self.player, self.enemy, self.turn)
+            if output.getvalue().strip():
+                self._log(output.getvalue())
+            if self.player["health"] <= 0:
+                self.finish_fight()
+                return
+            self._draw_scenery(battle=True)
+            self._update_status()
+
+        def flee(self):
+            if self.enemy is None:
+                return
+            self._log("You retreat safely. No battle rewards were earned.")
+            self.player["statuses"] = {}
+            self.player["guard"] = 0
+            self.player["combat_power_bonus"] = 0
+            self.player["loot_bonus"] = 0
+            self.show_home()
+
+        def finish_fight(self):
+            if self.enemy["health"] <= 0:
+                pet = pets.get(self.player.get("active_pet"), {})
+                base_reward = random.randint(*self.fight["reward"]) + self.player.get("loot_bonus", 0)
+                reward = base_reward * (100 + pet.get("gem_bonus", 0)) // 100
+                self.player["gems"] += reward
+                self._log(f"Victory! You earned {reward} gems.")
+                self._capture(award_experience, self.player, self.fight["xp"])
+                stats = self.player["combat_stats"]
+                stats["wins"] += 1
+                if self.fight["location"] == "monster hunt":
+                    stats["hunts"] += 1
+                if self.enemy["is_boss"]:
+                    stats["boss_wins"] += 1
+                update_progression_rewards(self.player)
+                if self.fight["ranked"]:
+                    old_rank = rank_for_points(self.player["rank_points"])
+                    self.player["rank_points"] += 1
+                    new_rank = rank_for_points(self.player["rank_points"])
+                    self._log(f"Rank: {new_rank} ({self.player['rank_points']} points).")
+                    if new_rank != old_rank:
+                        self._log(f"Promotion! You reached {new_rank}.")
+            else:
+                self.player["health"] = 1
+                self._log("Defeat! You return with 1 health and no battle rewards.")
+                if self.fight["ranked"]:
+                    self.player["rank_points"] = max(0, self.player["rank_points"] - 1)
+            self.player["statuses"] = {}
+            self.player["guard"] = 0
+            self.player["combat_power_bonus"] = 0
+            self.player["loot_bonus"] = 0
+            self._update_status()
+            self.show_home()
+
+        def show_shop(self):
+            options = []
+            for stat, amount in (("health", "+20 health"), ("power", "+5 power"), ("defense", "+5 defense")):
+                cost = upgrade_cost(self.player, stat)
+                options.append((f"BUY {stat.upper()} ({cost}g, {amount})", lambda stat=stat: self._buy(stat)))
+            options.extend(
+                (f"PET: {name.title()} ({pet['cost']}g)", lambda name=name: self._buy(f"pet {name}"))
+                for name, pet in pets.items() if name not in self.player["pets"]
+            )
+            options.append(("PRESTIGE (10000g)", lambda: self._buy("prestige")))
+            options.append(("BACK TO VILLAGE", self.show_home))
+            self._set_actions(options)
+            self._draw_scenery()
+            self._log("Shop: choose an upgrade, pet, or prestige.")
+
+        def _buy(self, item):
+            self._capture(shop, self.player, item)
+            self._update_status()
+            self.show_shop()
+
+        def show_training(self):
+            options = []
+            for skill in self.player["skills"]:
+                if skill in skill_upgrades:
+                    better, _ = skill_upgrades[skill]
+                    options.append((f"UPGRADE {skill} -> {better}", lambda skill=skill: self._train(f"upgrade {skill}")))
+                options.append((f"REPLACE {skill}", lambda skill=skill: self.choose_replacement(skill)))
+            options.append(("BACK TO VILLAGE", self.show_home))
+            self._set_actions(options)
+            self._draw_scenery()
+            self._log(f"Skill points available: {self.player.get('skill_points', 0)}.")
+
+        def _train(self, instruction):
+            self._capture(train, self.player, instruction)
+            self.show_training()
+
+        def choose_replacement(self, old_skill):
+            choices = [skill for skill in skill_upgrades if skill not in self.player["skills"]]
+            if not choices:
+                self._log("No new skills are available to learn.")
+                return
+            choice = simpledialog.askstring(
+                "Replace skill",
+                f"Replace {old_skill} with one of:\n{', '.join(choices)}",
+                parent=self.root,
+            )
+            if choice:
+                self._train(f"replace {old_skill} with {choice}")
+
+        def show_pets(self):
+            options = [
+                (f"EQUIP {name.title()} - {pets[name]['description']}", lambda name=name: self._equip_pet(name))
+                for name in self.player["pets"]
+            ]
+            options.append(("UNEQUIP PET", lambda: self._equip_pet("off")))
+            options.append(("BACK TO VILLAGE", self.show_home))
+            self._set_actions(options)
+            self._draw_scenery()
+            active = self.player.get("active_pet")
+            self._log(f"Active pet: {active.title() if active else 'none'}.")
+            if not self.player["pets"]:
+                self._log("You don't own any pets yet. Find them in the shop.")
+
+        def _equip_pet(self, name):
+            self._capture(equip_pet, self.player, name)
+            self._update_status()
+            self.show_pets()
+
+        def show_quests(self):
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                show_quests(self.player)
+            self._log(output.getvalue())
+            self._draw_scenery()
+            self._set_actions([("BACK TO VILLAGE", self.show_home)])
+
+        def save_character(self):
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                save_game(self.player)
+            self._log(output.getvalue())
+
+        def load_character(self):
+            old_player = self.player
+            loaded = old_player.copy() if old_player else {}
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                load_game(loaded)
+            message = output.getvalue().strip()
+            if "Loaded character:" not in message:
+                self._log(message)
+                return
+            self.player = loaded
+            self.enemy = None
+            self.fight = None
+            self._log(message)
+            self.show_home()
+
+    root = tk.Tk()
+    SurvivalGameUI(root)
+    root.mainloop()
+
+
 def main():
+    if "--terminal" not in sys.argv[1:]:
+        launch_gui()
+        return
+
     username = register()
     selected_role = role_selection(username)
     role = role_data[selected_role]
