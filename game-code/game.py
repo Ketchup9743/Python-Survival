@@ -1,5 +1,6 @@
 import contextlib
 import io
+import math
 import json
 import os
 import random
@@ -1461,71 +1462,109 @@ def launch_gui():
             self.enemy = None
             self.fight = None
             self.turn = 0
+            self._scene_redraw_pending = False
             self._build_layout()
+            self.scene.bind("<Configure>", self._schedule_scene_redraw)
+            self.root.after(180, self._animate_scene)
             self.show_start()
 
         def _build_layout(self):
-            self.header = tk.Frame(self.root, bg=self.colors["ink"], padx=16, pady=10)
+            self.header = tk.Frame(self.root, bg=self.colors["ink"], padx=18, pady=12)
             self.header.pack(fill="x")
             tk.Label(
                 self.header,
-                text="PYTHON SURVIVAL",
-                font=("Courier", 22, "bold"),
+                text="PYTHON  /  SURVIVAL",
+                font=("Courier", 21, "bold"),
                 fg=self.colors["gold"],
                 bg=self.colors["ink"],
             ).pack(side="left")
             self.status_label = tk.Label(
                 self.header,
                 text="A pixel adventure",
-                font=("Courier", 11, "bold"),
+                font=("Courier", 10, "bold"),
                 fg=self.colors["white"],
                 bg=self.colors["ink"],
+                justify="right",
             )
             self.status_label.pack(side="right")
 
-            body = tk.Frame(self.root, bg=self.colors["ink"], padx=14)
+            body = tk.Frame(self.root, bg=self.colors["ink"], padx=16)
             body.pack(fill="both", expand=True)
             self.scene = tk.Canvas(
                 body,
-                width=720,
-                height=410,
+                width=760,
+                height=470,
                 bg="#d6e8df",
-                highlightthickness=5,
+                highlightthickness=4,
                 highlightbackground=self.colors["paper"],
             )
             self.scene.pack(side="left", fill="both", expand=True, padx=(0, 12))
             self.actions = tk.Frame(
                 body,
                 bg=self.colors["panel"],
-                padx=12,
-                pady=12,
-                highlightthickness=4,
+                padx=13,
+                pady=13,
+                highlightthickness=3,
                 highlightbackground=self.colors["gold"],
             )
-            self.actions.pack(side="right", fill="y")
+            self.actions.pack(side="right", fill="y", ipadx=3)
             tk.Label(
                 self.actions,
-                text="ACTION MENU",
-                font=("Courier", 14, "bold"),
+                text="FIELD GUIDE",
+                font=("Courier", 13, "bold"),
                 bg=self.colors["panel"],
                 fg=self.colors["ink"],
-            ).pack(fill="x", pady=(0, 8))
+            ).pack(fill="x", pady=(0, 3))
+            self.profile_label = tk.Label(
+                self.actions,
+                text="Choose your path.",
+                font=("Courier", 9, "bold"),
+                bg=self.colors["panel"],
+                fg=self.colors["ink"],
+                justify="left",
+                anchor="w",
+                wraplength=230,
+                padx=8,
+                pady=8,
+                relief="ridge",
+                bd=2,
+            )
+            self.profile_label.pack(fill="x", pady=(2, 10))
             self.action_buttons = tk.Frame(self.actions, bg=self.colors["panel"])
             self.action_buttons.pack(fill="both", expand=True)
 
-            self.log = tk.Text(
+            log_panel = tk.Frame(
                 self.root,
-                height=8,
+                bg=self.colors["panel"],
+                padx=4,
+                pady=4,
+                highlightthickness=2,
+                highlightbackground=self.colors["gold"],
+            )
+            log_panel.pack(fill="x", padx=16, pady=(12, 14))
+            tk.Label(
+                log_panel,
+                text="FIELD NOTES",
+                font=("Courier", 9, "bold"),
+                bg=self.colors["panel"],
+                fg=self.colors["ink"],
+                anchor="w",
+            ).pack(fill="x", padx=7, pady=(2, 0))
+            self.log = tk.Text(
+                log_panel,
+                height=5,
                 wrap="word",
                 state="disabled",
-                font=("Courier", 10),
-                bg=self.colors["paper"],
+                font=("Courier", 9),
+                bg=self.colors["white"],
                 fg=self.colors["ink"],
-                padx=10,
-                pady=8,
+                padx=9,
+                pady=6,
                 relief="flat",
+                spacing1=2,
+                spacing3=2,
             )
-            self.log.pack(fill="x", padx=14, pady=12)
+            self.log.pack(fill="x", padx=4, pady=(3, 4))
 
         def _set_actions(self, options):
             for child in self.action_buttons.winfo_children():
@@ -1540,14 +1579,15 @@ def launch_gui():
                     fg=self.colors["ink"],
                     activebackground=self.colors["pink"],
                     activeforeground=self.colors["ink"],
-                    relief="raised",
+                    relief="flat",
                     bd=3,
-                    padx=8,
-                    pady=6,
+                    padx=9,
+                    pady=8,
                     anchor="w",
-                    wraplength=220,
+                    wraplength=230,
+                    cursor="hand2",
                 )
-                button.grid(row=index, column=0, sticky="ew", pady=3)
+                button.grid(row=index, column=0, sticky="ew", pady=3, ipady=1)
             self.action_buttons.grid_columnconfigure(0, weight=1)
 
         def _log(self, message):
@@ -1567,53 +1607,247 @@ def launch_gui():
         def _update_status(self):
             if self.player is None:
                 self.status_label.configure(text="A pixel adventure")
+                self.profile_label.configure(text="Choose a class and begin your journey.")
                 return
-            self.status_label.configure(
+            player = self.player
+            xp_needed = xp_to_next_level(player["level"])
+            pet_name = player.get("active_pet")
+            pet_text = pet_name.title() if pet_name else "None"
+            statuses = ", ".join(player.get("statuses", {})) or "None"
+            self.profile_label.configure(
                 text=(
-                    f"{self.player['name']}  |  LV {self.player['level']}  |  "
-                    f"GEMS {self.player['gems']}  |  "
-                    f"HP {self.player['health']}/{effective_max_health(self.player)}"
+                    f"{player['name']}  /  {player['role']}\n"
+                    f"LEVEL  {player['level']}     GEMS  {player['gems']}\n"
+                    f"HP      {player['health']} / {effective_max_health(player)}\n"
+                    f"POWER   {player['power']}     GUARD  {player['defense']}\n"
+                    f"XP      {player['xp']} / {xp_needed}\n"
+                    f"SKILLS  {player.get('skill_points', 0)} point(s)\n"
+                    f"PET     {pet_text}\n"
+                    f"STATUS  {statuses}"
                 )
             )
+            self.status_label.configure(
+                text=(
+                    f"{player['name']}  |  LV {player['level']}  |  "
+                    f"{player['gems']} GEMS"
+                )
+            )
+
+        def _schedule_scene_redraw(self, _event=None):
+            if self._scene_redraw_pending:
+                return
+            self._scene_redraw_pending = True
+            self.root.after_idle(self._redraw_scene)
+
+        def _redraw_scene(self):
+            self._scene_redraw_pending = False
+            if self.scene.winfo_exists():
+                self._draw_scenery(battle=self.enemy is not None)
+
+        def _animate_scene(self):
+            if not self.root.winfo_exists():
+                return
+            width = self.scene.winfo_width()
+            for tag in ("cloud-a", "cloud-b", "cloud-c"):
+                bounds = self.scene.bbox(tag)
+                if bounds:
+                    self.scene.move(tag, 1, 0)
+                    if bounds[0] > width:
+                        self.scene.move(tag, -(width + 180), 0)
+            self.root.after(90, self._animate_scene)
+
+        def _draw_cloud(self, x, y, scale, tag):
+            canvas = self.scene
+            color = "#f4fbf1"
+            canvas.create_rectangle(x, y + 11 * scale, x + 66 * scale, y + 24 * scale, fill=color, outline="", tags=tag)
+            canvas.create_rectangle(x + 12 * scale, y + 5 * scale, x + 51 * scale, y + 22 * scale, fill=color, outline="", tags=tag)
+            canvas.create_rectangle(x + 23 * scale, y, x + 40 * scale, y + 18 * scale, fill=color, outline="", tags=tag)
+            canvas.create_rectangle(x + 7 * scale, y + 21 * scale, x + 58 * scale, y + 25 * scale, fill="#d7ece3", outline="", tags=tag)
+
+        def _draw_tree(self, x, ground, scale=1):
+            canvas = self.scene
+            ink = self.colors["ink"]
+            canvas.create_rectangle(x + 23 * scale, ground - 48 * scale, x + 39 * scale, ground, fill="#76534a", outline=ink, width=2)
+            canvas.create_polygon(
+                x, ground - 48 * scale,
+                x + 9 * scale, ground - 75 * scale,
+                x + 21 * scale, ground - 69 * scale,
+                x + 30 * scale, ground - 101 * scale,
+                x + 43 * scale, ground - 70 * scale,
+                x + 57 * scale, ground - 76 * scale,
+                x + 65 * scale, ground - 48 * scale,
+                fill="#4e806b", outline=ink, width=2,
+            )
+            canvas.create_polygon(
+                x + 8 * scale, ground - 51 * scale,
+                x + 19 * scale, ground - 71 * scale,
+                x + 29 * scale, ground - 65 * scale,
+                x + 39 * scale, ground - 86 * scale,
+                x + 53 * scale, ground - 52 * scale,
+                fill="#78a982", outline="",
+            )
+            canvas.create_rectangle(x + 18 * scale, ground - 59 * scale, x + 24 * scale, ground - 53 * scale, fill="#a7c77f", outline="")
+            canvas.create_rectangle(x + 44 * scale, ground - 72 * scale, x + 50 * scale, ground - 66 * scale, fill="#a7c77f", outline="")
+
+        def _draw_title_card(self, width, y, title, subtitle):
+            canvas = self.scene
+            card_width = min(width - 40, max(340, len(title) * 14 + 70))
+            left = (width - card_width) // 2
+            canvas.create_rectangle(left + 4, y - 19 + 4, left + card_width + 4, y + 25 + 4, fill="#60767d", outline="")
+            canvas.create_rectangle(left, y - 19, left + card_width, y + 25, fill=self.colors["paper"], outline=self.colors["ink"], width=2)
+            canvas.create_text(width // 2, y - 5, text=title, font=("Courier", 13, "bold"), fill=self.colors["ink"])
+            canvas.create_text(width // 2, y + 13, text=subtitle, font=("Courier", 8), fill="#59636a")
 
         def _draw_scenery(self, battle=False):
             canvas = self.scene
             canvas.delete("all")
             width = max(canvas.winfo_width(), 720)
             height = max(canvas.winfo_height(), 410)
+            ink = self.colors["ink"]
+            ground = int(height * 0.79)
+
             canvas.create_rectangle(0, 0, width, height, fill="#a9d8e6", outline="")
-            canvas.create_oval(width - 150, 32, width - 72, 110, fill="#f3ce75", outline="")
-            canvas.create_rectangle(0, height - 122, width, height, fill="#94c27d", outline="")
-            canvas.create_rectangle(0, height - 92, width, height, fill="#6d9c67", outline="")
-            for x, y in ((70, 225), (150, 270), (width - 210, 220), (width - 110, 270)):
-                canvas.create_rectangle(x, y, x + 70, height - 92, fill="#578663", outline="")
-                canvas.create_rectangle(x - 18, y - 28, x + 88, y + 42, fill="#739f71", outline="")
-                canvas.create_rectangle(x + 13, y - 55, x + 58, y + 8, fill="#8bb27c", outline="")
+            for index, color in enumerate(("#b9e2e8", "#c8e8e4", "#d9eee1")):
+                y = int(height * (0.25 + index * 0.07))
+                canvas.create_rectangle(0, y, width, y + max(3, height // 45), fill=color, outline="")
+            sun_x, sun_y = int(width * 0.84), int(height * 0.17)
+            for offset in range(0, 360, 45):
+                angle = math.radians(offset)
+                x1 = sun_x + math.cos(angle) * 55
+                y1 = sun_y + math.sin(angle) * 55
+                x2 = sun_x + math.cos(angle) * 72
+                y2 = sun_y + math.sin(angle) * 72
+                canvas.create_line(x1, y1, x2, y2, fill="#f1c96a", width=4)
+            canvas.create_oval(sun_x - 28, sun_y - 28, sun_x + 28, sun_y + 28, fill="#f3ce75", outline="#e6a95f", width=3)
+            self._draw_cloud(int(width * 0.1), int(height * 0.16), 0.75, "cloud-a")
+            self._draw_cloud(int(width * 0.48), int(height * 0.27), 0.58, "cloud-b")
+            self._draw_cloud(int(width * 0.68), int(height * 0.11), 0.48, "cloud-c")
+
+            canvas.create_polygon(
+                0, int(height * 0.55), width * 0.14, int(height * 0.34),
+                width * 0.25, int(height * 0.53), width * 0.42, int(height * 0.31),
+                width * 0.59, int(height * 0.55), width * 0.76, int(height * 0.36),
+                width, int(height * 0.54), width, ground, 0, ground,
+                fill="#849eaa", outline="",
+            )
+            canvas.create_polygon(
+                0, int(height * 0.6), width * 0.2, int(height * 0.45),
+                width * 0.36, int(height * 0.59), width * 0.57, int(height * 0.42),
+                width * 0.76, int(height * 0.61), width, int(height * 0.46),
+                width, ground, 0, ground,
+                fill="#91b5a2", outline="",
+            )
+            canvas.create_rectangle(0, int(height * 0.62), width, height, fill="#95c781", outline="")
+            canvas.create_polygon(
+                0, int(height * 0.72), width * 0.19, int(height * 0.64),
+                width * 0.42, int(height * 0.73), width * 0.71, int(height * 0.62),
+                width, int(height * 0.72), width, height, 0, height,
+                fill="#80b773", outline="",
+            )
+            canvas.create_rectangle(0, ground + 5, width, height, fill="#679b68", outline="")
+
+            for x, scale in (
+                (int(width * 0.04), 0.78),
+                (int(width * 0.21), 0.58),
+                (int(width * 0.72), 0.62),
+                (int(width * 0.9), 0.88),
+            ):
+                self._draw_tree(x, ground + 10, scale)
 
             if not battle:
-                canvas.create_rectangle(270, height - 205, 405, height - 92, fill="#f4d18c", outline=self.colors["ink"], width=3)
-                canvas.create_polygon(258, height - 205, 338, height - 267, 418, height - 205, fill="#d77d79", outline=self.colors["ink"], width=3)
-                canvas.create_rectangle(322, height - 151, 354, height - 92, fill="#8b6254", outline=self.colors["ink"], width=2)
-                self._draw_hero(105, height - 104)
-                canvas.create_text(width // 2, 45, text="SUNMEADOW VILLAGE", font=("Courier", 19, "bold"), fill=self.colors["ink"])
-                canvas.create_text(width // 2, 75, text="A quiet place to prepare for adventure", font=("Courier", 11), fill=self.colors["ink"])
+                house_x = int(width * 0.48)
+                house_y = int(height * 0.48)
+                house_w = int(min(188, width * 0.25))
+                house_h = int(height * 0.25)
+                canvas.create_polygon(
+                    house_x - 25, house_y + house_h,
+                    house_x + house_w // 2, house_y + house_h + 100,
+                    house_x + house_w + 44, house_y + house_h,
+                    fill="#d7b97e", outline="",
+                )
+                canvas.create_rectangle(
+                    house_x, house_y, house_x + house_w, house_y + house_h,
+                    fill="#f4d18c", outline=ink, width=3,
+                )
+                canvas.create_polygon(
+                    house_x - 14, house_y + 3,
+                    house_x + house_w // 2, house_y - 60,
+                    house_x + house_w + 14, house_y + 3,
+                    fill="#cf7776", outline=ink, width=4,
+                )
+                canvas.create_line(
+                    house_x + 7, house_y + 9,
+                    house_x + house_w // 2, house_y - 47,
+                    house_x + house_w - 8, house_y + 9,
+                    fill="#e79a89", width=5,
+                )
+                for window_x in (house_x + 14, house_x + house_w - 51):
+                    canvas.create_rectangle(window_x, house_y + 30, window_x + 35, house_y + 63, fill="#85c6d0", outline=ink, width=3)
+                    canvas.create_line(window_x + 17, house_y + 30, window_x + 17, house_y + 63, fill=ink, width=2)
+                    canvas.create_line(window_x, house_y + 46, window_x + 35, house_y + 46, fill=ink, width=2)
+                canvas.create_rectangle(house_x + house_w // 2 - 18, house_y + house_h - 53, house_x + house_w // 2 + 19, house_y + house_h, fill="#916452", outline=ink, width=3)
+                canvas.create_oval(house_x + house_w // 2 + 8, house_y + house_h - 28, house_x + house_w // 2 + 13, house_y + house_h - 23, fill=self.colors["gold"], outline="")
+                canvas.create_rectangle(house_x - 8, house_y + house_h - 7, house_x + house_w + 8, house_y + house_h + 2, fill="#d5aa72", outline=ink, width=2)
+
+                fence_y = ground - 3
+                for fence_x in (int(width * 0.38), int(width * 0.68)):
+                    for post in range(4):
+                        px = fence_x + post * 20
+                        canvas.create_rectangle(px, fence_y - 26, px + 6, fence_y + 3, fill="#ead39f", outline=ink, width=1)
+                    canvas.create_rectangle(fence_x, fence_y - 20, fence_x + 66, fence_y - 15, fill="#ead39f", outline=ink, width=1)
+                    canvas.create_rectangle(fence_x, fence_y - 7, fence_x + 66, fence_y - 2, fill="#ead39f", outline=ink, width=1)
+
+                for flower_x in range(18, width - 10, 52):
+                    flower_y = ground + 18 + (flower_x % 3) * 4
+                    canvas.create_line(flower_x, flower_y, flower_x, flower_y + 10, fill="#4d815d", width=2)
+                    canvas.create_rectangle(flower_x - 3, flower_y - 3, flower_x + 3, flower_y + 3, fill=("#f3d16f" if flower_x % 2 else "#ef8c9a"), outline="")
+
+                self._draw_hero(int(width * 0.17), ground + 34)
+                self._draw_title_card(width, 37, "SUNMEADOW VILLAGE", "A quiet place to prepare for adventure")
                 return
 
-            self._draw_hero(150, height - 112)
-            self._draw_enemy(width - 205, height - 112)
-            canvas.create_text(width // 2, 36, text=self.enemy["name"].upper(), font=("Courier", 18, "bold"), fill=self.colors["ink"])
-            if self.enemy.get("is_boss"):
-                canvas.create_text(width // 2, 62, text=f"PHASE {self.enemy.get('phase', 1)}", font=("Courier", 11, "bold"), fill=self.colors["ink"])
+            canvas.create_oval(width * 0.08, ground - 8, width * 0.48, ground + 26, fill="#719b79", outline="#4e795e", width=3)
+            canvas.create_oval(width * 0.54, ground - 8, width * 0.94, ground + 26, fill="#719b79", outline="#4e795e", width=3)
+            canvas.create_arc(width * 0.1, ground - 7, width * 0.46, ground + 22, start=0, extent=180, style="arc", outline="#a8c887", width=3)
+            canvas.create_arc(width * 0.56, ground - 7, width * 0.92, ground + 22, start=0, extent=180, style="arc", outline="#a8c887", width=3)
+            self._draw_hero(int(width * 0.2), ground + 10)
+            self._draw_enemy(int(width * 0.73), ground + 10)
+            subtitle = "BOSS ENCOUNTER" if self.enemy.get("is_boss") else self.fight["location"].upper()
+            self._draw_title_card(width, 36, self.enemy["name"].upper(), subtitle)
             self._draw_battle_bars(width, height)
 
         def _draw_hero(self, x, ground):
             canvas = self.scene
-            canvas.create_rectangle(x, ground - 58, x + 34, ground - 24, fill="#f1c96a", outline=self.colors["ink"], width=2)
-            canvas.create_rectangle(x + 4, ground - 79, x + 30, ground - 53, fill="#f0bd96", outline=self.colors["ink"], width=2)
-            canvas.create_rectangle(x + 2, ground - 85, x + 32, ground - 77, fill="#57465d", outline=self.colors["ink"], width=2)
-            canvas.create_rectangle(x + 5, ground - 24, x + 14, ground - 3, fill="#4d5267", outline=self.colors["ink"])
-            canvas.create_rectangle(x + 21, ground - 24, x + 30, ground - 3, fill="#4d5267", outline=self.colors["ink"])
-            canvas.create_rectangle(x + 22, ground - 69, x + 25, ground - 66, fill=self.colors["ink"], outline="")
+            ink = self.colors["ink"]
+            role_colors = {
+                "Engineer": ("#d5a448", "#4d7382", "#78594d"),
+                "Medic": ("#da9a91", "#f0e2d2", "#628c89"),
+                "Support": ("#87a77b", "#576f6d", "#d1b078"),
+                "Miner": ("#bd8b52", "#695c52", "#90714f"),
+                "Soldier": ("#7c9271", "#52616d", "#b58b62"),
+            }
+            player = self.player or {}
+            accent, coat, trim = role_colors.get(player.get("role"), ("#d5a448", "#4d7382", "#78594d"))
+            canvas.create_oval(x - 9, ground - 11, x + 61, ground + 4, fill="#4c795c", outline="")
+            canvas.create_rectangle(x + 11, ground - 91, x + 43, ground - 48, fill=coat, outline=ink, width=3)
+            canvas.create_polygon(x + 12, ground - 67, x + 5, ground - 30, x + 15, ground - 26, x + 25, ground - 55, fill=coat, outline=ink, width=2)
+            canvas.create_polygon(x + 39, ground - 67, x + 49, ground - 34, x + 41, ground - 29, x + 31, ground - 54, fill=coat, outline=ink, width=2)
+            canvas.create_rectangle(x + 15, ground - 53, x + 24, ground - 23, fill="#4d5267", outline=ink, width=2)
+            canvas.create_rectangle(x + 31, ground - 53, x + 40, ground - 23, fill="#4d5267", outline=ink, width=2)
+            canvas.create_rectangle(x + 11, ground - 26, x + 26, ground - 19, fill="#604b4d", outline=ink, width=2)
+            canvas.create_rectangle(x + 29, ground - 26, x + 44, ground - 19, fill="#604b4d", outline=ink, width=2)
+            canvas.create_rectangle(x + 15, ground - 87, x + 39, ground - 62, fill="#f0bd96", outline=ink, width=2)
+            canvas.create_rectangle(x + 17, ground - 81, x + 20, ground - 78, fill=ink, outline="")
+            canvas.create_rectangle(x + 34, ground - 81, x + 37, ground - 78, fill=ink, outline="")
+            canvas.create_rectangle(x + 21, ground - 68, x + 34, ground - 64, fill="#c77b72", outline="")
+            canvas.create_polygon(x + 12, ground - 85, x + 13, ground - 98, x + 39, ground - 98, x + 43, ground - 83, x + 34, ground - 88, x + 20, ground - 86, fill="#56465a", outline=ink, width=2)
+            canvas.create_rectangle(x + 14, ground - 56, x + 40, ground - 51, fill=accent, outline=ink, width=1)
+            canvas.create_rectangle(x + 25, ground - 57, x + 29, ground - 50, fill="#f4d777", outline="")
+            canvas.create_rectangle(x + 7, ground - 60, x + 13, ground - 45, fill=trim, outline=ink, width=1)
+            if player.get("weapon"):
+                canvas.create_line(x + 48, ground - 69, x + 58, ground - 25, fill="#ead7ad", width=4)
+                canvas.create_line(x + 43, ground - 65, x + 52, ground - 67, fill=ink, width=3)
+            canvas.create_rectangle(x + 43, ground - 43, x + 52, ground - 34, fill="#f3ce75", outline=ink, width=2)
 
         def _draw_enemy(self, x, ground):
             canvas = self.scene
@@ -1621,42 +1855,85 @@ def launch_gui():
             if enemy_name.startswith("Level "):
                 enemy_name = enemy_name.split(" ", 2)[-1]
             palette = {
-                "Cave Brute": "#a57868",
-                "Venom Stalker": "#8f9b68",
-                "Stone Sentinel": "#898d9d",
-                "Storm Wisp": "#9b8cb9",
-                "Iron Colossus": "#888a8c",
-                "Elder Dragon": "#bd7869",
-                "Void Champion": "#665e80",
+                "Cave Brute": ("#a57868", "#d5aa7f"),
+                "Venom Stalker": ("#8f9b68", "#c8d77f"),
+                "Stone Sentinel": ("#898d9d", "#c3c4cc"),
+                "Storm Wisp": ("#9b8cb9", "#d2c8ee"),
+                "Iron Colossus": ("#888a8c", "#e0b56d"),
+                "Elder Dragon": ("#bd7869", "#f1c96a"),
+                "Void Champion": ("#665e80", "#d1a2e8"),
             }
-            color = palette.get(enemy_name, "#bc847d")
-            canvas.create_rectangle(x, ground - 76, x + 86, ground - 12, fill=color, outline=self.colors["ink"], width=3)
-            canvas.create_rectangle(x + 8, ground - 92, x + 78, ground - 62, fill=color, outline=self.colors["ink"], width=3)
-            canvas.create_rectangle(x + 17, ground - 82, x + 24, ground - 75, fill=self.colors["white"], outline=self.colors["ink"])
-            canvas.create_rectangle(x + 61, ground - 82, x + 68, ground - 75, fill=self.colors["white"], outline=self.colors["ink"])
-            canvas.create_rectangle(x + 25, ground - 56, x + 66, ground - 51, fill=self.colors["ink"], outline="")
-            canvas.create_rectangle(x + 10, ground - 12, x + 27, ground - 2, fill=self.colors["ink"], outline="")
-            canvas.create_rectangle(x + 59, ground - 12, x + 76, ground - 2, fill=self.colors["ink"], outline="")
+            color, highlight = palette.get(enemy_name, ("#bc847d", "#f0bd96"))
+            ink = self.colors["ink"]
+            canvas.create_oval(x - 14, ground - 10, x + 132, ground + 7, fill="#4c795c", outline="")
+
+            if "Dragon" in enemy_name:
+                canvas.create_polygon(x + 31, ground - 62, x - 22, ground - 127, x + 42, ground - 108, x + 64, ground - 70, fill="#a45f59", outline=ink, width=3)
+                canvas.create_polygon(x + 80, ground - 67, x + 132, ground - 126, x + 112, ground - 70, fill="#a45f59", outline=ink, width=3)
+                canvas.create_polygon(x + 17, ground - 47, x - 28, ground - 36, x + 14, ground - 31, fill=color, outline=ink, width=3)
+            elif "Stalker" in enemy_name:
+                canvas.create_polygon(x + 20, ground - 47, x + 41, ground - 94, x + 62, ground - 77, x + 91, ground - 99, x + 112, ground - 48, fill=color, outline=ink, width=3)
+                canvas.create_polygon(x + 24, ground - 52, x - 3, ground - 87, x + 35, ground - 71, fill=highlight, outline=ink, width=2)
+                canvas.create_polygon(x + 96, ground - 53, x + 126, ground - 89, x + 104, ground - 68, fill=highlight, outline=ink, width=2)
+            elif "Wisp" in enemy_name:
+                canvas.create_polygon(x + 12, ground - 51, x + 26, ground - 91, x + 60, ground - 111, x + 97, ground - 89, x + 113, ground - 51, x + 91, ground - 28, x + 72, ground - 48, x + 49, ground - 27, x + 32, ground - 47, fill=color, outline=ink, width=3)
+                canvas.create_oval(x + 28, ground - 94, x + 98, ground - 29, outline=highlight, width=3)
+            else:
+                canvas.create_polygon(x + 9, ground - 28, x + 11, ground - 75, x + 28, ground - 87, x + 42, ground - 77, x + 58, ground - 101, x + 76, ground - 79, x + 100, ground - 91, x + 119, ground - 73, x + 112, ground - 28, fill=color, outline=ink, width=3)
+                canvas.create_rectangle(x + 21, ground - 47, x + 105, ground - 24, fill=color, outline=ink, width=2)
+
+            if "Brute" in enemy_name:
+                canvas.create_polygon(x + 25, ground - 81, x + 19, ground - 105, x + 44, ground - 88, fill=highlight, outline=ink, width=2)
+                canvas.create_polygon(x + 97, ground - 84, x + 111, ground - 106, x + 114, ground - 78, fill=highlight, outline=ink, width=2)
+            elif "Sentinel" in enemy_name or "Colossus" in enemy_name:
+                for plate_x in (x + 24, x + 53, x + 82):
+                    canvas.create_rectangle(plate_x, ground - 70, plate_x + 19, ground - 49, fill=highlight, outline=ink, width=2)
+                canvas.create_rectangle(x + 21, ground - 25, x + 47, ground - 5, fill="#5b626d", outline=ink, width=2)
+                canvas.create_rectangle(x + 78, ground - 25, x + 104, ground - 5, fill="#5b626d", outline=ink, width=2)
+            elif "Champion" in enemy_name:
+                canvas.create_polygon(x + 37, ground - 94, x + 60, ground - 121, x + 85, ground - 94, fill=highlight, outline=ink, width=2)
+                canvas.create_line(x + 108, ground - 76, x + 134, ground - 24, fill="#d7d0e0", width=5)
+
+            canvas.create_rectangle(x + 38, ground - 79, x + 49, ground - 69, fill="#fff5dc", outline=ink, width=2)
+            canvas.create_rectangle(x + 81, ground - 79, x + 92, ground - 69, fill="#fff5dc", outline=ink, width=2)
+            canvas.create_rectangle(x + 42, ground - 76, x + 47, ground - 71, fill=highlight, outline="")
+            canvas.create_rectangle(x + 85, ground - 76, x + 90, ground - 71, fill=highlight, outline="")
+            canvas.create_line(x + 49, ground - 49, x + 82, ground - 47, fill=ink, width=4)
+            for spike_x in (x + 32, x + 58, x + 84):
+                canvas.create_rectangle(spike_x, ground - 101, spike_x + 7, ground - 93, fill=highlight, outline=ink, width=1)
 
         def _draw_battle_bars(self, width, height):
             canvas = self.scene
-            y = height - 46
+            y = height - 47
             player_max = effective_max_health(self.player)
             enemy_max = max(1, self.enemy.get("max_health", self.enemy["health"]))
-            canvas.create_rectangle(26, y - 18, 322, y + 21, fill=self.colors["paper"], outline=self.colors["ink"], width=2)
-            canvas.create_text(37, y - 7, text="YOU", anchor="w", font=("Courier", 10, "bold"), fill=self.colors["ink"])
-            self._draw_bar(85, y - 8, 205, self.player["health"], player_max)
-            canvas.create_text(37, y + 10, text=f"{self.player['health']}/{player_max}", anchor="w", font=("Courier", 9), fill=self.colors["ink"])
-            canvas.create_rectangle(width - 322, y - 18, width - 26, y + 21, fill=self.colors["paper"], outline=self.colors["ink"], width=2)
-            canvas.create_text(width - 310, y - 7, text="FOE", anchor="w", font=("Courier", 10, "bold"), fill=self.colors["ink"])
-            self._draw_bar(width - 250, y - 8, 205, self.enemy["health"], enemy_max)
-            canvas.create_text(width - 310, y + 10, text=f"{self.enemy['health']}/{enemy_max}", anchor="w", font=("Courier", 9), fill=self.colors["ink"])
+            card_width = min(320, int(width * 0.4))
+            left, right = 18, width - card_width - 18
+            for x in (left, right):
+                canvas.create_rectangle(x + 3, y - 20 + 3, x + card_width + 3, y + 22 + 3, fill="#617a73", outline="")
+                canvas.create_rectangle(x, y - 20, x + card_width, y + 22, fill=self.colors["paper"], outline=self.colors["ink"], width=2)
 
-        def _draw_bar(self, x, y, width, current, maximum):
+            canvas.create_text(left + 12, y - 9, text=self.player["name"].upper(), anchor="w", font=("Courier", 9, "bold"), fill=self.colors["ink"])
+            canvas.create_text(left + card_width - 12, y - 9, text=f"LV {self.player['level']}", anchor="e", font=("Courier", 8, "bold"), fill="#59636a")
+            self._draw_bar(left + 12, y + 1, card_width - 24, self.player["health"], player_max)
+            canvas.create_text(left + 12, y + 14, text=f"HP {self.player['health']} / {player_max}", anchor="w", font=("Courier", 8), fill=self.colors["ink"])
+
+            canvas.create_text(right + 12, y - 9, text=self.enemy["name"].upper(), anchor="w", font=("Courier", 9, "bold"), fill=self.colors["ink"])
+            if self.enemy.get("is_boss"):
+                canvas.create_text(right + card_width - 12, y - 9, text=f"PHASE {self.enemy.get('phase', 1)}", anchor="e", font=("Courier", 8, "bold"), fill="#9a4f55")
+            self._draw_bar(right + 12, y + 1, card_width - 24, self.enemy["health"], enemy_max, enemy=True)
+            canvas.create_text(right + 12, y + 14, text=f"HP {self.enemy['health']} / {enemy_max}", anchor="w", font=("Courier", 8), fill=self.colors["ink"])
+
+        def _draw_bar(self, x, y, width, current, maximum, enemy=False):
             canvas = self.scene
-            canvas.create_rectangle(x, y, x + width, y + 10, fill="#e1d6be", outline=self.colors["ink"])
-            fill_width = max(0, min(width, width * max(0, current) / max(1, maximum)))
-            canvas.create_rectangle(x, y, x + fill_width, y + 10, fill="#77a86d", outline="")
+            canvas.create_rectangle(x, y, x + width, y + 8, fill="#d9d1c1", outline=self.colors["ink"])
+            ratio = max(0, min(1, current / max(1, maximum)))
+            fill_width = max(0, int(width * ratio))
+            color = "#bd6d70" if enemy else "#77a86d"
+            if ratio < 0.25:
+                color = "#cb615f"
+            if fill_width:
+                canvas.create_rectangle(x + 1, y + 1, x + fill_width, y + 7, fill=color, outline="")
 
         def show_start(self):
             self.player = None
