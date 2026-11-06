@@ -1,4 +1,7 @@
+import os
 import random
+import sys
+import time
 
 
 role_data = {
@@ -94,6 +97,93 @@ bosses = [
     },
 ]
 
+pets = {
+    "ember fox": {
+        "cost": 600,
+        "description": "+10% damage",
+        "damage_bonus": 10,
+    },
+    "iron tortoise": {
+        "cost": 600,
+        "description": "+8 defense",
+        "defense_bonus": 8,
+    },
+    "healing hare": {
+        "cost": 650,
+        "description": "+25 max health",
+        "health_bonus": 25,
+    },
+    "scholar owl": {
+        "cost": 750,
+        "description": "+15% XP",
+        "xp_bonus": 15,
+    },
+    "lucky raccoon": {
+        "cost": 750,
+        "description": "+15% gems",
+        "gem_bonus": 15,
+    },
+}
+
+
+def terminal_animation_enabled():
+    return sys.stdout.isatty() and os.environ.get("TERM") != "dumb"
+
+
+def render_pixel_title():
+    print()
+    print("  +--------------------------------------+")
+    print("  |  ____        _   _                   |")
+    print("  | |  _ \\ _   _| |_| |__   ___  _ __   |")
+    print("  | | |_) | | | | __| '_ \\ / _ \\| '_ \\  |")
+    print("  | |  __/| |_| | |_| | | | (_) | | | | |")
+    print("  | |_|    \\__, |\\__|_| |_|\\___/|_| |_| |")
+    print("  |        |___/       SURVIVAL v1.0     |")
+    print("  +--------------------------------------+")
+    print("  ........................................")
+    if terminal_animation_enabled():
+        for frame in ("[    ]", "[.   ]", "[..  ]", "[... ]"):
+            print(f"       BOOT {frame}", end="\r", flush=True)
+            time.sleep(0.06)
+        print(" " * 24, end="\r", flush=True)
+    print()
+
+
+def health_bar(current, maximum, width=20):
+    maximum = max(1, maximum)
+    filled = max(0, min(width, int(width * current / maximum)))
+    return "#" * filled + "-" * (width - filled)
+
+
+def render_pixel_status(player, enemy):
+    print(
+        f"  YOU   {health_bar(player['health'], effective_max_health(player))} "
+        f"{player['health']}/{effective_max_health(player)}"
+    )
+    print(
+        f"  FOE   {health_bar(enemy['health'], enemy.get('max_health', enemy['health']))} "
+        f"{enemy['health']}/{enemy.get('max_health', enemy['health'])}"
+    )
+
+
+def render_pixel_battle(player, enemy):
+    print("  +--------------------------------------+")
+    print("  |             BATTLE SCREEN            |")
+    print("  |       [O]                 [XXX]      |")
+    print("  |       /|\\                  /|\\       |")
+    print("  |       / \\                  / \\       |")
+    print("  +--------------------------------------+")
+    render_pixel_status(player, enemy)
+
+
+def animate_impact():
+    if not terminal_animation_enabled():
+        return
+    for frame in ("  *", " ** ", "*****"):
+        print(f"       HIT {frame}", end="\r", flush=True)
+        time.sleep(0.04)
+    print(" " * 20, end="\r", flush=True)
+
 
 def register():
     return input("What is your username? ").strip()
@@ -120,7 +210,12 @@ def role_selection(username):
 
 def damage_enemy(player, enemy, multiplier=1):
     power = player["power"] + player.get("combat_power_bonus", 0)
-    damage = max(1, int(power * multiplier) - enemy["defense"])
+    pet = pets.get(player.get("active_pet"), {})
+    damage = max(
+        1,
+        int(power * multiplier) * (100 + pet.get("damage_bonus", 0)) // 100
+        - enemy["defense"],
+    )
     enemy["health"] = max(0, enemy["health"] - damage)
     print(f"You deal {damage} damage. {enemy['name']} has {enemy['health']} health left.")
 
@@ -139,32 +234,38 @@ def guard(player, amount, skill_name):
 
 def protect(player, enemy=None):
     if enemy is None:
-        player["defense"] += 10
-        print(f"You protect yourself. Defense is now {player['defense']}.")
+        print("Protect can only be used while fighting an enemy.")
     else:
         guard(player, 10, "Protect")
 
 
 def upgrade(player, enemy=None):
     if enemy is None:
-        player["power"] += 10
-        print(f"Your equipment is upgraded. Power is now {player['power']}.")
+        print("Upgrade can only be used while fighting an enemy.")
     else:
-        player["combat_power_bonus"] += 10
-        print("Your power increases for this fight.")
+        boost_combat_power(player)
 
 
 def heal(player, enemy=None):
-    player["health"] = min(player["max_health"], player["health"] + 30)
-    print(f"You heal. Health is now {player['health']}/{player['max_health']}.")
+    max_health = effective_max_health(player)
+    player["health"] = min(max_health, player["health"] + 30)
+    print(f"You heal. Health is now {player['health']}/{max_health}.")
 
 
 def buff(player, enemy=None):
     if enemy is None:
-        player["power"] += 10
-        print(f"You gain a power buff. Power is now {player['power']}.")
+        print("Buff can only be used while fighting an enemy.")
     else:
-        player["combat_power_bonus"] += 10
+        boost_combat_power(player)
+
+
+def boost_combat_power(player, amount=10):
+    bonus_limit = max(10, player["power"] // 2)
+    current_bonus = player.get("combat_power_bonus", 0)
+    player["combat_power_bonus"] = min(current_bonus + amount, bonus_limit)
+    if player["combat_power_bonus"] == current_bonus:
+        print("Your power boost is already at its limit for this fight.")
+    else:
         print("Your power increases for this fight.")
 
 
@@ -177,18 +278,25 @@ def debuff(player, enemy=None):
 
 
 def pickpocket(player, enemy=None):
+    steal_gems(player, enemy, 40)
+
+
+def steal_gems(player, enemy, max_loot_bonus):
     if enemy is None:
         print("PickPocket can only be used while fighting an enemy.")
     else:
-        stolen_gems = random.randint(20, 40)
-        player["loot_bonus"] += stolen_gems
+        available_bonus = max_loot_bonus - player.get("loot_bonus", 0)
+        if available_bonus <= 0:
+            print("You have already stolen the maximum bonus gems for this fight.")
+            return
+        stolen_gems = min(random.randint(20, 40), available_bonus)
+        player["loot_bonus"] = player.get("loot_bonus", 0) + stolen_gems
         print(f"You steal supplies worth {stolen_gems} bonus gems if you win.")
 
 
 def cover(player, enemy=None):
     if enemy is None:
-        player["defense"] += 15
-        print(f"You take cover. Defense is now {player['defense']}.")
+        print("Cover can only be used while fighting an enemy.")
     else:
         guard(player, 15, "Cover")
 
@@ -208,16 +316,114 @@ def divine_beam(player, enemy=None):
 
 
 def healing_light(player, enemy=None):
-    player["health"] = min(player["max_health"], player["health"] + 40)
-    print(f"Healing Light restores health to {player['health']}/{player['max_health']}.")
+    max_health = effective_max_health(player)
+    player["health"] = min(max_health, player["health"] + 40)
+    print(f"Healing Light restores health to {player['health']}/{max_health}.")
 
 
 def hardening_aura(player, enemy=None):
     if enemy is None:
-        player["defense"] += 20
-        print(f"Hardening Aura raises defense to {player['defense']}.")
+        print("Hardening Aura can only be used while fighting an enemy.")
     else:
         guard(player, 20, "Hardening Aura")
+
+
+def power_strike(player, enemy=None):
+    if enemy is None:
+        print(f"Power Strike would deal {int(player['power'] * 1.5)} damage.")
+    else:
+        damage_enemy(player, enemy, 1.5)
+        enemy["power"] = max(1, enemy["power"] - 5)
+        print(f"Power Strike staggers {enemy['name']}, reducing its power by 5.")
+
+
+def aegis_guard(player, enemy=None):
+    if enemy is None:
+        print("Aegis Guard can only be used while fighting an enemy.")
+    else:
+        guard(player, 20, "Aegis Guard")
+        enemy["power"] = max(1, enemy["power"] - 5)
+        print(f"Aegis Guard weakens {enemy['name']} by 5 power.")
+
+
+def masterwork(player, enemy=None):
+    if enemy is None:
+        print("Masterwork can only be used while fighting an enemy.")
+    else:
+        boost_combat_power(player, 20)
+        guard(player, 5, "Masterwork")
+
+
+def greater_heal(player, enemy=None):
+    max_health = effective_max_health(player)
+    player["health"] = min(max_health, player["health"] + 50)
+    print(f"Greater Heal restores health to {player['health']}/{max_health}.")
+    if enemy is not None:
+        guard(player, 10, "Greater Heal")
+
+
+def battle_focus(player, enemy=None):
+    if enemy is None:
+        print("Battle Focus can only be used while fighting an enemy.")
+    else:
+        boost_combat_power(player, 20)
+        guard(player, 10, "Battle Focus")
+
+
+def crippling_blow(player, enemy=None):
+    if enemy is None:
+        print("Crippling Blow can only be used while fighting an enemy.")
+    else:
+        enemy["power"] = max(1, enemy["power"] - 20)
+        print(f"You cripple {enemy['name']}. Its power is now {enemy['power']}.")
+
+
+def plunder(player, enemy=None):
+    steal_gems(player, enemy, 60)
+
+
+def reinforced_cover(player, enemy=None):
+    if enemy is None:
+        print("Reinforced Cover can only be used while fighting an enemy.")
+    else:
+        guard(player, 25, "Reinforced Cover")
+        enemy["power"] = max(1, enemy["power"] - 5)
+        print(f"Reinforced Cover weakens {enemy['name']} by 5 power.")
+
+
+def cluster_bomb(player, enemy=None):
+    if enemy is None:
+        print(f"Cluster Bomb would deal {int(player['power'] * 2)} damage.")
+    else:
+        damage_enemy(player, enemy, 2)
+        enemy["power"] = max(1, enemy["power"] - 5)
+        print(f"The blast weakens {enemy['name']} by 5 power.")
+
+
+def celestial_nova(player, enemy=None):
+    if enemy is None:
+        print(f"Celestial Nova would deal {int(player['power'] * 2.5)} damage.")
+    else:
+        damage_enemy(player, enemy, 2.5)
+        enemy["power"] = max(1, enemy["power"] - 10)
+        print(f"Celestial Nova weakens {enemy['name']} by 10 power.")
+
+
+def divine_renewal(player, enemy=None):
+    max_health = effective_max_health(player)
+    player["health"] = min(max_health, player["health"] + 65)
+    print(f"Divine Renewal restores health to {player['health']}/{max_health}.")
+    if enemy is not None:
+        guard(player, 10, "Divine Renewal")
+
+
+def iron_aegis(player, enemy=None):
+    if enemy is None:
+        print("Iron Aegis can only be used while fighting an enemy.")
+    else:
+        guard(player, 30, "Iron Aegis")
+        enemy["power"] = max(1, enemy["power"] - 10)
+        print(f"Iron Aegis weakens {enemy['name']} by 10 power.")
 
 
 skill_functions = {
@@ -235,21 +441,143 @@ skill_functions = {
     "Hardening Aura": hardening_aura,
 }
 
+skill_upgrades = {
+    "Attack": ("Power Strike", "Deal 50% more damage and stagger the enemy."),
+    "Protect": ("Aegis Guard", "Gain 20 guard and weaken the enemy by 5 power."),
+    "Upgrade": ("Masterwork", "Gain a larger power boost and 5 guard."),
+    "Heal": ("Greater Heal", "Restore 50 health and gain 10 guard."),
+    "Buff": ("Battle Focus", "Gain a larger power boost and 10 guard."),
+    "Debuff": ("Crippling Blow", "Reduce enemy power by 20 instead of 10."),
+    "PickPocket": ("Plunder", "Steal up to 60 bonus gems instead of 40."),
+    "Cover": ("Reinforced Cover", "Gain 25 guard and weaken the enemy by 5 power."),
+    "Grenade": ("Cluster Bomb", "Deal double damage and weaken the enemy."),
+    "Divine Beam": ("Celestial Nova", "Deal 2.5x damage and weaken the enemy."),
+    "Healing Light": ("Divine Renewal", "Restore 65 health and gain 10 guard."),
+    "Hardening Aura": ("Iron Aegis", "Gain 30 guard and weaken the enemy by 10 power."),
+}
+
+skill_functions.update(
+    {
+        "Power Strike": power_strike,
+        "Aegis Guard": aegis_guard,
+        "Masterwork": masterwork,
+        "Greater Heal": greater_heal,
+        "Battle Focus": battle_focus,
+        "Crippling Blow": crippling_blow,
+        "Plunder": plunder,
+        "Reinforced Cover": reinforced_cover,
+        "Cluster Bomb": cluster_bomb,
+        "Celestial Nova": celestial_nova,
+        "Divine Renewal": divine_renewal,
+        "Iron Aegis": iron_aegis,
+    }
+)
+
 
 def show_skills(player):
     print(f"\nRole: {player['role']}")
     level = player.get("level", 1)
     xp = player.get("xp", 0)
+    max_health = effective_max_health(player)
     print(
         f"Level: {level} | XP: {xp}/{100 * level} | "
-        f"Rank: {ranks[min(player.get('rank_points', 0) // 3, len(ranks) - 1)]}"
+        f"Rank: {ranks[min(player.get('rank_points', 0) // 3, len(ranks) - 1)]} | "
+        f"Skill points: {player.get('skill_points', 0)}"
     )
     print(
-        f"Stats: Health {player['health']}/{player['max_health']} | "
+        f"Stats: Health {player['health']}/{max_health} | "
         f"Power {player['power']} | Defense {player['defense']} | "
         f"Weapon {player['weapon']}"
     )
     print("Skills: " + ", ".join(player["skills"]))
+    active_pet = player.get("active_pet")
+    if active_pet:
+        print(f"Active pet: {active_pet.title()} ({pets[active_pet]['description']})")
+
+
+def train(player, instruction=None):
+    skill_points = player.get("skill_points", 0)
+    if skill_points < 1:
+        print("You need a skill point to train. Gain one each time you level up.")
+        return
+
+    if instruction is None:
+        print(f"You have {skill_points} skill point(s).")
+        print("Upgrade options:")
+        for skill in player["skills"]:
+            if skill in skill_upgrades:
+                upgraded_skill, description = skill_upgrades[skill]
+                print(f"- upgrade {skill} -> {upgraded_skill}: {description}")
+        available_skills = [
+            skill for skill in skill_upgrades if skill not in player["skills"]
+        ]
+        print("Skills available to learn: " + ", ".join(available_skills))
+        print("Use: upgrade <skill> | replace <old skill> with <new skill> | cancel")
+        instruction = input("Choose your training: ").strip()
+
+    instruction = instruction.strip()
+    if instruction.casefold() in {"", "cancel"}:
+        print("Training cancelled.")
+        return
+
+    if instruction.casefold().startswith("upgrade "):
+        skill_name = instruction[len("upgrade "):].strip()
+        current_skill = next(
+            (
+                skill for skill in player["skills"]
+                if skill.casefold() == skill_name.casefold()
+            ),
+            None,
+        )
+        if current_skill is None:
+            print("You can only upgrade a skill you currently know.")
+            return
+        if current_skill not in skill_upgrades:
+            print(f"{current_skill} has no further upgrade.")
+            return
+        upgraded_skill, _ = skill_upgrades[current_skill]
+        skill_index = player["skills"].index(current_skill)
+        player["skills"][skill_index] = upgraded_skill
+        player["skill_points"] = skill_points - 1
+        print(f"{current_skill} upgraded to {upgraded_skill}.")
+        return
+
+    action, separator, replacement = instruction.partition(" ")
+    with_index = replacement.casefold().find(" with ")
+    if action.casefold() != "replace" or not separator or with_index < 0:
+        print("Use: upgrade <skill> or replace <old skill> with <new skill>.")
+        return
+
+    old_name = replacement[:with_index]
+    new_name = replacement[with_index + len(" with "):]
+    old_skill = next(
+        (
+            skill for skill in player["skills"]
+            if skill.casefold() == old_name.strip().casefold()
+        ),
+        None,
+    )
+    new_skill = next(
+        (
+            skill for skill in skill_upgrades
+            if skill.casefold() == new_name.strip().casefold()
+        ),
+        None,
+    )
+    if old_skill is None:
+        print("You can only replace a skill you currently know.")
+        return
+    if new_skill is None:
+        print("That skill is not available to learn. Check /train for the skill list.")
+        return
+    if new_skill in player["skills"]:
+        print(f"You already know {new_skill}.")
+        return
+
+    skill_index = player["skills"].index(old_skill)
+    player["skills"][skill_index] = new_skill
+    player["skill_points"] = skill_points - 1
+    print(f"{old_skill} replaced with {new_skill}.")
 
 
 def use_skill(player, skill_name):
@@ -264,13 +592,16 @@ def show_help():
     print("/help - Show this command list")
     print("/tutorial - Play through the tutorial")
     print("/skills - Show your role, stats, and available skills")
+    print("/train - Spend skill points to replace or upgrade a skill")
     print("/home - Return home and restore your health")
     print("/arena - Fight a random ranked opponent for XP and gems")
     print("/ranked - Check your rank and fight a fake ranked player")
-    print("/boss - Fight a powerful boss for 1200-2000 gems on victory")
+    print("/boss - Fight a powerful boss for 500-800 gems on victory")
     print("/gem - Check your current gems")
     print("/shop - Show upgrades and their prices")
     print("/shop health|power|defense - Buy a stat upgrade")
+    print("/shop pet <name> - Buy a pet; /pet <name> equips an owned pet")
+    print("/pets - List pets, effects, and ownership")
     print("/shop prestige - Prestige for 10000 gems and a permanent stat bonus")
     print("Type a skill name to use it; /quit exits the game.")
 
@@ -286,12 +617,72 @@ def show_shop(player):
     print(f"power: {upgrade_cost(player, 'power')} gems (+5 power)")
     print(f"defense: {upgrade_cost(player, 'defense')} gems (+5 defense)")
     print("prestige: 10000 gems (resets upgrades, adds permanent stat bonuses)")
-    print("Buy with /shop health, /shop power, /shop defense, or /shop prestige.")
+    print("Pets:")
+    for name, pet in pets.items():
+        status = " (owned)" if name in player["pets"] else ""
+        print(f"{name}: {pet['cost']} gems ({pet['description']}){status}")
+    print(
+        "Buy with /shop health, /shop power, /shop defense, /shop prestige, "
+        "or /shop pet <name>."
+    )
+
+
+def effective_max_health(player):
+    pet = pets.get(player.get("active_pet"), {})
+    return player["max_health"] + pet.get("health_bonus", 0)
+
+
+def show_pets(player):
+    active_pet = player.get("active_pet")
+    print("\nPets:")
+    for name, pet in pets.items():
+        if name in player["pets"]:
+            status = " (equipped)" if name == active_pet else " (owned)"
+        else:
+            status = f" ({pet['cost']} gems)"
+        print(f"- {name.title()}: {pet['description']}{status}")
+    print("Buy pets with /shop pet <name>; equip an owned pet with /pet <name>.")
+    print("Use /pet off to unequip your pet.")
+
+
+def equip_pet(player, pet_name):
+    if pet_name == "off":
+        player["active_pet"] = None
+        player["health"] = min(player["health"], effective_max_health(player))
+        print("Your pet is unequipped.")
+        return
+    if pet_name not in pets:
+        print("Unknown pet. Type /pets to see the available pets.")
+        return
+    if pet_name not in player["pets"]:
+        print(f"You don't own the {pet_name.title()}. Buy it with /shop pet {pet_name}.")
+        return
+
+    player["active_pet"] = pet_name
+    player["health"] = min(player["health"], effective_max_health(player))
+    print(f"{pet_name.title()} is now your active pet: {pets[pet_name]['description']}.")
 
 
 def shop(player, item=None):
     if item is None:
         show_shop(player)
+        return
+
+    if item.startswith("pet "):
+        pet_name = item[4:].strip()
+        if pet_name not in pets:
+            print("Unknown pet. Type /pets to see the available pets.")
+            return
+        if pet_name in player["pets"]:
+            print(f"You already own the {pet_name.title()}.")
+            return
+        cost = pets[pet_name]["cost"]
+        if player["gems"] < cost:
+            print(f"You need {cost} gems to buy the {pet_name.title()}.")
+            return
+        player["gems"] -= cost
+        player["pets"].append(pet_name)
+        print(f"You adopted the {pet_name.title()}! Equip it with /pet {pet_name}.")
         return
 
     if item in player["upgrades"]:
@@ -340,8 +731,8 @@ def shop(player, item=None):
 
 def go_home(player):
     player["location"] = "home"
-    player["health"] = player["max_health"]
-    print(f"You are home. Health restored to {player['health']}/{player['max_health']}.")
+    player["health"] = effective_max_health(player)
+    print(f"You are home. Health restored to {player['health']}/{effective_max_health(player)}.")
 
 
 def rank_for_points(rank_points):
@@ -354,18 +745,21 @@ def xp_to_next_level(level):
 
 
 def award_experience(player, amount):
+    pet = pets.get(player.get("active_pet"), {})
+    amount = amount * (100 + pet.get("xp_bonus", 0)) // 100
     player["xp"] += amount
     print(f"You earned {amount} XP.")
     while player["xp"] >= xp_to_next_level(player["level"]):
         player["xp"] -= xp_to_next_level(player["level"])
         player["level"] += 1
+        player["skill_points"] = player.get("skill_points", 0) + 1
         player["max_health"] += 10
         player["health"] += 10
         player["power"] += 5
         player["defense"] += 3
         print(
             f"Level up! You are now level {player['level']}: "
-            "+10 max health, +5 power, +3 defense."
+            "+10 max health, +5 power, +3 defense, +1 skill point."
         )
 
 
@@ -427,6 +821,7 @@ def fight_opponent(
         f"\n{location.title()} opponent: {enemy['name']}{opponent_details} "
         f"(Health {enemy['health']}, Power {enemy['power']}, Defense {enemy['defense']})"
     )
+    render_pixel_battle(player, enemy)
 
     while player["health"] > 0 and enemy["health"] > 0:
         action = input(
@@ -443,23 +838,37 @@ def fight_opponent(
             print("That skill is not available to your role. Type /skills to see your skills.")
             continue
 
+        enemy_health_before = enemy["health"]
         skill_functions[action](player, enemy)
+        if enemy["health"] < enemy_health_before:
+            animate_impact()
         if enemy["health"] <= 0:
+            render_pixel_status(player, enemy)
             break
 
+        pet = pets.get(player.get("active_pet"), {})
         effective_defense = max(
-            0, player["defense"] - enemy.get("armor_piercing", 0)
+            0,
+            player["defense"]
+            + pet.get("defense_bonus", 0)
+            - enemy.get("armor_piercing", 0),
         )
         damage = max(1, enemy["power"] - effective_defense - player["guard"])
         player["health"] = max(0, player["health"] - damage)
         player["guard"] = 0
         print(
             f"{enemy['name']} hits you for {damage}. "
-            f"Your health is {player['health']}/{player['max_health']}."
+            f"Your health is {player['health']}/{effective_max_health(player)}."
         )
+        render_pixel_status(player, enemy)
 
     if enemy["health"] <= 0:
-        reward = random.randint(*reward_range) + player["loot_bonus"]
+        pet = pets.get(player.get("active_pet"), {})
+        reward = (
+            (random.randint(*reward_range) + player["loot_bonus"])
+            * (100 + pet.get("gem_bonus", 0))
+            // 100
+        )
         player["gems"] += reward
         print(f"You defeated {enemy['name']} and earned {reward} gems!")
         award_experience(player, xp_reward)
@@ -520,7 +929,7 @@ def show_ranked_and_fight(player):
 
 def boss_fight(player):
     fight_opponent(
-        player, bosses, (1200, 2000), "boss arena", xp_reward=200
+        player, bosses, (500, 800), "boss arena", xp_reward=200
     )
 
 
@@ -541,6 +950,8 @@ def game_loop(player):
             tutorial(player)
         elif command_name == "/skills":
             show_skills(player)
+        elif command_name == "/train":
+            train(player, argument)
         elif command_name == "/home":
             go_home(player)
         elif command_name == "/arena":
@@ -551,6 +962,10 @@ def game_loop(player):
             boss_fight(player)
         elif command_name == "/gem":
             print(f"You have {player['gems']} gems.")
+        elif command_name == "/pets":
+            show_pets(player)
+        elif command_name == "/pet":
+            equip_pet(player, argument or "")
         elif command_name == "/shop":
             shop(player, argument)
         elif command_name.startswith("/"):
@@ -565,6 +980,8 @@ def tutorial(player):
     show_skills(player)
     print("In ranked fights, choose a skill each turn. Your opponent attacks after your turn.")
     print("Wins give gems and XP. Leveling up raises your health, power, and defense.")
+    print("Each level also gives 1 skill point. Use /train to upgrade or replace a skill.")
+    print("Pets give one passive bonus at a time; buy them in the shop and equip with /pet.")
     print("Win ranked fights to climb through the ranks; losses can lower your rank points.")
     print("Practice one of your skills on a harmless training dummy, or type /skip.")
 
@@ -600,7 +1017,7 @@ def main():
         "max_health": role["health"],
         "power": role["power"],
         "defense": role["defense"],
-        "skills": role["skills"],
+        "skills": role["skills"].copy(),
         "weapon": role["weapon"],
         "base_health": role["health"],
         "base_power": role["power"],
@@ -609,11 +1026,15 @@ def main():
         "prestige": 0,
         "level": 1,
         "xp": 0,
+        "skill_points": 0,
         "rank_points": 0,
         "upgrades": {"health": 0, "power": 0, "defense": 0},
+        "pets": [],
+        "active_pet": None,
         "location": "home",
     }
 
+    render_pixel_title()
     play_tutorial = input("Would you like to play the tutorial? Y / N: ").strip().upper()
     if play_tutorial == "Y":
         tutorial(player)
