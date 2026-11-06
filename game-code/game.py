@@ -68,7 +68,7 @@ role_data = {
 }
 
 ranks = ["Bronze", "Silver", "Platinum", "Diamond", "Elite", "Divine", "Master Rank"]
-fake_player_names = ["Nova", "Mira", "Kade", "Orion", "Vex", "Sable", "Rook", "Astra"]
+fake_player_names = ["Player 1", "Player 2", "Player 3", "Player 4", "Player 5", "Player 6", "Player 7", "Player 8"]
 
 bosses = [
     {
